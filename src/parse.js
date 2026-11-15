@@ -29,6 +29,11 @@ const SITES = {
   whatsapp: "https://web.whatsapp.com",
 };
 
+// Ked appka nie je nainstalovana, otvori sa web.
+const FALLBACK = { claude: "https://claude.ai", gemini: "https://gemini.google.com", spotify: "https://open.spotify.com", discord: "https://discord.com/app", steam: "https://store.steampowered.com", whatsapp: "https://web.whatsapp.com", chatgpt: "https://chatgpt.com" };
+
+const BROWSERS = { chrome: "chrome", "google chrome": "chrome", edge: "msedge", "microsoft edge": "msedge", firefox: "firefox", brave: "brave", opera: "opera", "opera gx": "opera" };
+
 // Veci, ktore verzia 1 zamerne nerobi (nic sa nema stratit ani odoslat).
 const BLOCKED =
   /\b(zmaz|vymaz|odstran|odinstaluj|nainstaluj|instaluj|stiahni|plat|zaplat|kup|objednaj|posli|odosli|napis spravu|vypni pocitac|restartuj|restart pc|formatuj)\b/;
@@ -78,6 +83,16 @@ function parse(text) {
   m = n.match(/^otvor\s+(prvy|druhy|treti)(?:\s+subor)?$/);
   if (m) return { type: "open-found", index: { prvy: 0, druhy: 1, treti: 2 }[m[1]] };
 
+  // zlozene: otvor X a vyhladaj Y / otvor X a napis Y
+  m = n.match(/^(?:otvor|spusti|zapni|pust)\s+(?:mi\s+)?(.+?)\s+a\s+(?:mi\s+)?(?:vyhladaj|hladaj|najdi|vygoogli)\s+(.+)$/);
+  if (m) return { type: "search", target: m[1].trim().slice(0, 40), query: m[2].trim().slice(0, 120), browser: BROWSERS[m[1].trim()] || null };
+  m = n.match(/^(?:otvor|spusti|zapni|pust)\s+(?:mi\s+)?(.+?)\s+a\s+(?:mi\s+)?(?:napis|vloz|zadaj|pis)\s+(?:mu\s+|jej\s+|im\s+)?(.+)$/);
+  if (m) {
+    // text berieme z povodnej vety (s diakritikou)
+    const o = String(text || "").trim().match(/\s+a\s+(?:mi\s+)?(?:napíš|napis|vlož|vloz|zadaj|píš|pis)\s+(?:mu\s+|jej\s+|im\s+)?(.+)$/i);
+    return { type: "type", target: m[1].trim().slice(0, 40), text: (o ? o[1] : m[2]).trim().slice(0, 200) };
+  }
+
   // otvor / spusti
   m = n.match(/^(?:otvor|spusti|zapni|pust)\s+(?:mi\s+)?(?:aplikaciu\s+|program\s+|stranku\s+|web\s+)?(.+)$/);
   if (m) {
@@ -91,4 +106,4 @@ function parse(text) {
   return null;
 }
 
-module.exports = { parse, nrm, SITES };
+module.exports = { parse, nrm, SITES, FALLBACK };
