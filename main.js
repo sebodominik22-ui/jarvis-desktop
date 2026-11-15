@@ -3,6 +3,49 @@ const { app, BrowserWindow, ipcMain, shell, session, nativeTheme, Menu } = requi
 const path = require("path");
 const { parse } = require("./src/parse");
 const actions = require("./src/actions");
+const fs = require("fs");
+const cp = require("child_process");
+
+// Rezim Edge: rozpoznavanie reci v Edge (sk-SK, bez kluca). Pomocnik bezi ako samostatny proces z toho isteho balicka.
+function edgeExe() {
+  const c = [
+    path.join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "Microsoft", "Edge", "Application", "msedge.exe"),
+    path.join(process.env.ProgramFiles || "C:\\Program Files", "Microsoft", "Edge", "Application", "msedge.exe"),
+  ];
+  return c.find((p) => fs.existsSync(p)) || null;
+}
+function wantEdge() {
+  if (process.platform !== "win32" || process.argv.includes("--electron-ui") || process.env.JV_ELECTRON_UI) return false;
+  try { if (fs.existsSync(path.join(app.getPath("userData"), "no-edge"))) return false; } catch (e) {}
+  return !!edgeExe();
+}
+function launchEdgeMode() {
+  const child = cp.spawn(process.execPath, [path.join(__dirname, "helper", "server.js")], {
+    env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: "1" }),
+    detached: true, stdio: "ignore", windowsHide: true,
+  });
+  child.on("error", () => {});
+  child.unref();
+}
+
+// Automaticka aktualizacia appky z GitHub releasu (bez pytania). Cakame najviac 8 s, potom pokracujeme.
+function checkUpdate() {
+  return new Promise((resolve) => {
+    if (!app.isPackaged) return resolve(false);
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; resolve(v); } };
+    try {
+      const { autoUpdater } = require("electron-updater");
+      autoUpdater.autoDownload = true;
+      autoUpdater.autoInstallOnAppQuit = false;
+      autoUpdater.on("update-downloaded", () => { fin(true); setTimeout(() => autoUpdater.quitAndInstall(true, true), 300); });
+      autoUpdater.on("update-not-available", () => fin(false));
+      autoUpdater.on("error", () => fin(false));
+      autoUpdater.checkForUpdates().catch(() => fin(false));
+      setTimeout(() => fin(false), 8000);
+    } catch (e) { fin(false); }
+  });
+}
 
 const DASH = "https://prehlad-4kz8xm2q9wvd7rj6.pages.dev/";
 const ORIGIN = new URL(DASH).origin;
@@ -61,7 +104,10 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const upd = await checkUpdate();
+  if (upd) return;
+  if (wantEdge()) { launchEdgeMode(); setTimeout(() => app.quit(), 1500); return; }
   // Mikrofon povol len nasej stranke.
   const mediaOk = (permission, origin) => (permission === "media" || permission === "audioCapture") && String(origin || "").startsWith(ORIGIN);
   session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
