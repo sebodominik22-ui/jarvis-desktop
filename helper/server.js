@@ -7,7 +7,7 @@ const cp = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { parse, nrm } = require("../src/parse");
+const { parse, nrm, SITES, FALLBACK } = require("../src/parse");
 
 const DASH = "https://prehlad-4kz8xm2q9wvd7rj6.pages.dev/";
 const ORIGIN = new URL(DASH).origin;
@@ -57,7 +57,11 @@ async function openApp(name) {
     const i = l.indexOf("|");
     return { name: l.slice(0, i), id: l.slice(i + 1) };
   });
-  if (!rows.length) return { reply: `Aplikáciu „${name}“ som medzi nainštalovanými nenašiel.` };
+  if (!rows.length) {
+    const fb = FALLBACK[q] || SITES[q];
+    if (fb) { shellOpen(fb); return { reply: `Aplikáciu „${name}“ som nenašiel, otváram web.`, web: true }; }
+    return { reply: `Aplikáciu „${name}“ som medzi nainštalovanými nenašiel.`, notFound: true };
+  }
   const exact = rows.find((r) => nrm(r.name) === q) || rows[0];
   if (rows.length > 1 && nrm(exact.name) !== q) {
     return confirmAction(`Otvoriť „${exact.name}“? (podobné: ${rows.map((r) => r.name).join(", ")})`, async () => launchApp(exact));
@@ -121,6 +125,13 @@ function confirmAction(text, fn) {
   return { confirm: { text, id } };
 }
 
+function searchUrl(target, q) {
+  const e = encodeURIComponent(q);
+  if (/youtube/.test(target)) return "https://www.youtube.com/results?search_query=" + e;
+  if (/mapy|maps/.test(target)) return "https://www.google.com/maps/search/" + e;
+  return "https://www.google.com/search?q=" + e;
+}
+
 async function runCmd(cmd) {
   switch (cmd.type) {
     case "blocked":
@@ -130,6 +141,19 @@ async function runCmd(cmd) {
       shellOpen(cmd.url);
       return { reply: "Otváram stránku." };
     case "app": return openApp(cmd.name);
+    case "search": {
+      const url = searchUrl(cmd.target, cmd.query);
+      if (cmd.browser) spawnFree("cmd.exe", ["/d", "/s", "/c", 'start "" "' + cmd.browser + '" "' + url + '"']);
+      else shellOpen(url);
+      return { reply: `Hľadám „${cmd.query}“ ${cmd.browser ? "v " + cmd.target : "v prehliadači"}.` };
+    }
+    case "type":
+      return confirmAction(`Otvorím „${cmd.target}“ a dám text „${cmd.text}“ do schránky (bez odoslania).`, async () => {
+        await ps("Set-Clipboard -Value $env:JT", { JT: cmd.text }, 8000);
+        const r = await openApp(cmd.target);
+        if (r.notFound) return r;
+        return { reply: "Otvorené a text je v schránke. Vlož ho Ctrl+V a odošli sám (v tomto režime ho sám nevkladám)." };
+      });
     case "find": return find(cmd.query);
     case "open-found": return openFound(cmd.index);
     case "volume": return volume(cmd.mode, cmd.value);
