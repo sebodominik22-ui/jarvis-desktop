@@ -29,6 +29,7 @@
       "preload.js",
       "offline.html",
       "src/**/*",
+      "helper/**/*",
       "package.json"
     ],
     "win": {
@@ -40,6 +41,15 @@
       "perMachine": false,
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
-    }
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://github.com/sebodominik22-ui/jarvis-desktop/releases/download/latest"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }
