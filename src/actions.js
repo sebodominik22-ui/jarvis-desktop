@@ -1,10 +1,10 @@
 // Jarvis desktop: vykonavanie prikazov na PC (Windows). Kazda funkcia vrati { reply: "text" }.
 // Pravidla: ziadne mazanie, instalacie, platby ani odosielanie. Citlive veci idu cez potvrdenie.
-const { app, dialog, shell, desktopCapturer, screen, Notification } = require("electron");
+const { app, dialog, shell, desktopCapturer, screen, Notification, clipboard } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const { nrm } = require("./parse");
+const { nrm, SITES, FALLBACK } = require("./parse");
 
 let lastFound = [];
 let timers = [];
@@ -55,7 +55,14 @@ async function openApp(win, name) {
     const i = l.indexOf("|");
     return { name: l.slice(0, i), id: l.slice(i + 1) };
   });
-  if (!rows.length) return { reply: `Aplikáciu „${name}“ som medzi nainštalovanými nenašiel.` };
+  if (!rows.length) {
+    const fb = FALLBACK[q] || SITES[q];
+    if (fb) {
+      await shell.openExternal(fb);
+      return { reply: `Aplikáciu „${name}“ som nenašiel, otváram web.`, web: true };
+    }
+    return { reply: `Aplikáciu „${name}“ som medzi nainštalovanými nenašiel.`, notFound: true };
+  }
   const exact = rows.find((r) => nrm(r.name) === q) || rows[0];
   if (rows.length > 1 && nrm(exact.name) !== q && !confirm(win, `Otvoriť „${exact.name}“?`, "Našlo sa viac podobných aplikácií: " + rows.map((r) => r.name).join(", "))) {
     return { reply: "Dobre, neotváram." };
@@ -134,6 +141,37 @@ function startTimer(win, seconds) {
   return { reply: `Časovač nastavený na ${txt}.` };
 }
 
+function searchUrl(target, q) {
+  const e = encodeURIComponent(q);
+  if (/youtube/.test(target)) return "https://www.youtube.com/results?search_query=" + e;
+  if (/mapy|maps/.test(target)) return "https://www.google.com/maps/search/" + e;
+  return "https://www.google.com/search?q=" + e;
+}
+
+async function search(win, cmd) {
+  const url = searchUrl(cmd.target, cmd.query);
+  if (cmd.browser) {
+    const c = spawn("cmd.exe", ["/d", "/s", "/c", 'start "" "' + cmd.browser + '" "' + url + '"'], { windowsVerbatimArguments: true, detached: true, stdio: "ignore", windowsHide: true });
+    c.on("error", () => {});
+    c.unref();
+    return { reply: `Hľadám „${cmd.query}“ v ${cmd.target}.` };
+  }
+  await shell.openExternal(url);
+  return { reply: `Hľadám „${cmd.query}“ v prehliadači.` };
+}
+
+// Otvori appku a vlozi text cez schranku (Ctrl+V). Enter nikdy nestlaca, odoslanie robi Dominik.
+async function typeText(win, cmd) {
+  if (!confirm(win, `Otvorím „${cmd.target}“ a vložím text „${cmd.text}“ (bez odoslania, Enter nestláčam).`, "Text sa vloží do okna, ktoré bude po otvorení vpredu.")) return { reply: "Dobre, nič nerobím." };
+  const r = await openApp(win, cmd.target);
+  if (r.notFound) return r;
+  clipboard.writeText(cmd.text);
+  if (r.web) return { reply: `Appku som nenašiel, otvoril som web. Text mám v schránke, vlož ho Ctrl+V a odošli sám.` };
+  await new Promise((res) => setTimeout(res, 4500));
+  await ps("Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')", {}, 10000);
+  return { reply: `Vložil som text do ${cmd.target}. Odošli ho sám, Enter nestláčam.` };
+}
+
 async function run(win, cmd) {
   switch (cmd.type) {
     case "blocked":
@@ -143,6 +181,8 @@ async function run(win, cmd) {
       await shell.openExternal(cmd.url);
       return { reply: "Otváram stránku." };
     case "app": return openApp(win, cmd.name);
+    case "search": return search(win, cmd);
+    case "type": return typeText(win, cmd);
     case "find": return find(win, cmd.query);
     case "open-found": return openFound(win, cmd.index);
     case "volume": return volume(cmd.mode, cmd.value);
