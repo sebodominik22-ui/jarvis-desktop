@@ -1,0 +1,25 @@
+name: Build Windows app
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm test
+      - run: npm run dist
+      - name: Publish release (stable link)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest dist/Jarvis-Setup.exe --title "Jarvis (latest)" --notes "Jarvis-Setup.exe: stiahni a spusti. Zdrojovy kod je v repozitari."
