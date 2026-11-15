@@ -63,11 +63,18 @@ function createWindow() {
 
 app.whenReady().then(() => {
   // Mikrofon povol len nasej stranke.
-  session.defaultSession.setPermissionRequestHandler((wc, permission, cb) => {
-    const ok = permission === "media" && wc.getURL().startsWith(ORIGIN);
-    cb(ok);
+  const mediaOk = (permission, origin) => (permission === "media" || permission === "audioCapture") && String(origin || "").startsWith(ORIGIN);
+  session.defaultSession.setPermissionRequestHandler((wc, permission, cb, details) => {
+    cb(mediaOk(permission, (details && details.requestingUrl) || (wc && wc.getURL())));
   });
-  session.defaultSession.setPermissionCheckHandler((wc, permission) => permission === "media" && !!wc && wc.getURL().startsWith(ORIGIN));
+  session.defaultSession.setPermissionCheckHandler((wc, permission, requestingOrigin) => mediaOk(permission, requestingOrigin || (wc && wc.getURL())));
+
+  // Otvori nastavenia mikrofonu vo Windows (len na ziadost nasej stranky).
+  ipcMain.handle("pc:mic-settings", async (event) => {
+    const url = event.senderFrame ? event.senderFrame.url : "";
+    if (url.startsWith(ORIGIN)) await shell.openExternal("ms-settings:privacy-microphone");
+    return true;
+  });
 
   // Prikazy pre PC prijimame len od nasej stranky.
   ipcMain.handle("pc:run", async (event, text) => {
