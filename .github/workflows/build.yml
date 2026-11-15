@@ -14,6 +14,7 @@ jobs:
         with:
           node-version: 22
       - run: npm install
+      - run: npm version "1.0.${{ github.run_number }}" --no-git-tag-version
       - run: npm test
       - run: npm run dist
       - name: Publish release (stable link)
@@ -22,4 +23,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest dist/Jarvis-Setup.exe --title "Jarvis (latest)" --notes "Jarvis-Setup.exe: stiahni a spusti. Zdrojovy kod je v repozitari."
+          gh release create latest dist/Jarvis-Setup.exe dist/latest.yml dist/Jarvis-Setup.exe.blockmap --title "Jarvis (latest)" --notes "Jarvis-Setup.exe: stiahni a spusti. Zdrojovy kod je v repozitari."
